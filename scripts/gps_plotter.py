@@ -193,7 +193,7 @@ def main():
     
     rospy.init_node('gps_plotter_node')
     fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-    rospy.Subscriber('/fix', NavSatFix, on_nmea_data1)
+    rospy.Subscriber('/fix', NavSatFix, on_nmea_data1, callback_args=(fig, ax))
     rospy.spin()
 
     
