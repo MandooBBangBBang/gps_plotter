@@ -35,7 +35,7 @@ def linear_interpolation(x, y, t):
     x_indices = np.clip(x_indices, 0, len(x) - 2)
     x_deltas = t - x_indices
 
-def plot_2D_graph(latitude, longitude):
+def plot_2D_graph(ax, latitude, longitude):
     # 2D 그래프를 그리는 함수 구현
     # 데이터 포맷 변경
     latitude = [format_coordinate(lat) for lat in latitude]
@@ -59,10 +59,10 @@ def plot_2D_graph(latitude, longitude):
     # 그래프 출력
     plt.legend()
     plt.show()
-    pass
+    return ax
 
 
-def plot_3D_graph(latitude, longitude, altitude):
+def plot_3D_graph(ax, latitude, longitude, altitude):
     # 3D 그래프 객체 생성
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -134,26 +134,27 @@ def plot_3D_graph(latitude, longitude, altitude):
     pass
 
 # ! Too much Memory Usage Occured
-def on_nmea_data1(msg):
+def on_nmea_data1(msg, callback_args):
+    fig, ax = callback_args
     latitude = msg.latitude
     longitude = msg.longitude
     altitude = msg.altitude
 
     if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
-        # 2D 그래프와 3D 그래프를 그릴 수 있는 subplot을 생성
-        fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-        
         # 2D 그래프 그리기
+        ax[0].clear()  # 2D 그래프 업데이트를 위해 기존 그래프 삭제
         plot_2D_graph(ax[0], [latitude], [longitude])
         
         # 3D 그래프 그리기
+        ax[1].clear()  # 3D 그래프 업데이트를 위해 기존 그래프 삭제
         plot_3D_graph(ax[1], [latitude], [longitude], [altitude])
 
-        # 그래프를 조정하여 겹치지 않도록 함
-        plt.tight_layout()
+        # 그래프 출력
+        fig.canvas.draw_idle()
+        plt.pause(0.001)  # 그래프를 업데이트하기 위해 잠시 일시 정지
+    else:
+        print("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
 
-        # 그래프를 출력
-        plt.show()
 
     
 def parse_gga_sentence(sentence):
@@ -188,8 +189,10 @@ def parse_gga_sentence(sentence):
 
 
 def main():
+    global ax
     
     rospy.init_node('gps_plotter_node')
+    fig, ax = plt.subplots(2, 1, figsize=(10, 10))
     rospy.Subscriber('/fix', NavSatFix, on_nmea_data1)
     rospy.spin()
 
