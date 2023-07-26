@@ -25,6 +25,15 @@ def format_altitude(altitude):
 def format_coordinate(coord):
     return coord / 1e7
 
+def linear_interpolation(x, y, t):
+    # 선형 보간 함수
+    x = np.asarray(x)
+    y = np.asarray(y)
+    t = np.asarray(t)
+
+    x_indices = np.floor(t).astype(int)
+    x_indices = np.clip(x_indices, 0, len(x) - 2)
+    x_deltas = t - x_indices
 
 def plot_2D_graph(latitude, longitude):
     # 2D 그래프를 그리는 함수 구현
@@ -51,7 +60,6 @@ def plot_2D_graph(latitude, longitude):
     plt.legend()
     plt.show()
     pass
-
 
 
 def plot_3D_graph(latitude, longitude, altitude):
@@ -89,71 +97,63 @@ def plot_3D_graph(latitude, longitude, altitude):
             transform=ax.transAxes, fontsize=8, verticalalignment='top', horizontalalignment='left', bbox=dict(facecolor='white', alpha=0.8))
 
     def on_click(event):
-        # 클릭한 점들의 index 가져오기
         ind = event.ind
         if len(ind) == 2:
-            # 두 점만 선택했을 때 해당 점들 색 변경 (빨간색)
             points.set_color('blue')
             points._facecolors[ind] = (1, 0, 0, 1)
 
-            # 점들의 헤딩 방향 표시 (두 점 사이만)
             for i in range(ind[0], ind[1]):
                 ax.quiver(latitude[i], longitude[i], altitude[i],
                           latitude[i + 1] - latitude[i], longitude[i + 1] - longitude[i], altitude[i + 1] - altitude[i],
                           color='blue', length=0.1, arrow_length_ratio=0.2)
 
-            # 보간하여 부드러운 선 그리기 (두 점 사이만)
-            num_points = 100  # 선의 간격 조절을 위한 포인트 수
-            interp_fn_lat = interp1d(np.arange(len(latitude))[ind[0]:ind[1]+1], latitude[ind[0]:ind[1]+1], kind='cubic')
-            interp_fn_lon = interp1d(np.arange(len(longitude))[ind[0]:ind[1]+1], longitude[ind[0]:ind[1]+1], kind='cubic')
-            interp_fn_alt = interp1d(np.arange(len(altitude))[ind[0]:ind[1]+1], altitude[ind[0]:ind[1]+1], kind='cubic')
+            num_points = 100
             t_new = np.linspace(ind[0], ind[1], num_points)
-            lat_new = interp_fn_lat(t_new)
-            lon_new = interp_fn_lon(t_new)
-            alt_new = interp_fn_alt(t_new)
+            lat_new = linear_interpolation(np.arange(len(latitude)), latitude, t_new)
+            lon_new = linear_interpolation(np.arange(len(longitude)), longitude, t_new)
+            alt_new = linear_interpolation(np.arange(len(altitude)), altitude, t_new)
             ax.plot(lat_new, lon_new, alt_new, color='red')
 
         else:
-            # 두 점 이상 선택했을 때 초기화
             points.set_color('blue')
             ax.clear()
-            plot_3D_graph(latitude, longitude, altitude)  # 변수들을 인자로 다시 전달하여 초기화
+            plot_3D_graph(latitude, longitude, altitude)
 
-        # 그래프 갱신
         fig.canvas.draw_idle()
 
-    # 클릭 이벤트를 위한 연결
     fig.canvas.mpl_connect('pick_event', on_click)
 
-    # 전체 데이터에 대해 보간하여 부드러운 선 그리기
-    num_points = 100  # 선의 간격 조절을 위한 포인트 수
-    interp_fn_lat = interp1d(np.arange(len(latitude)), latitude, kind='cubic')
-    interp_fn_lon = interp1d(np.arange(len(longitude)), longitude, kind='cubic')
-    interp_fn_alt = interp1d(np.arange(len(altitude)), altitude, kind='cubic')
+    num_points = 100
     t_new = np.linspace(0, len(latitude) - 1, num_points)
-    lat_new = interp_fn_lat(t_new)
-    lon_new = interp_fn_lon(t_new)
-    alt_new = interp_fn_alt(t_new)
+    lat_new = linear_interpolation(np.arange(len(latitude)), latitude, t_new)
+    lon_new = linear_interpolation(np.arange(len(longitude)), longitude, t_new)
+    alt_new = linear_interpolation(np.arange(len(altitude)), altitude, t_new)
     ax.plot(lat_new, lon_new, alt_new, color='red')
 
-    # 그래프 출력
     plt.show()
     pass
 
+# ! Too much Memory Usage Occured
 def on_nmea_data1(msg):
-    
     latitude = msg.latitude
     longitude = msg.longitude
     altitude = msg.altitude
-    
+
     if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
-        plot_2D_graph([latitude], [longitude])
+        # 2D 그래프와 3D 그래프를 그릴 수 있는 subplot을 생성
+        fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+        
+        # 2D 그래프 그리기
+        plot_2D_graph(ax[0], [latitude], [longitude])
+        
         # 3D 그래프 그리기
-        plot_3D_graph([latitude], [longitude], [altitude])
-    else:
-        print("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
+        plot_3D_graph(ax[1], [latitude], [longitude], [altitude])
 
+        # 그래프를 조정하여 겹치지 않도록 함
+        plt.tight_layout()
 
+        # 그래프를 출력
+        plt.show()
 
     
 def parse_gga_sentence(sentence):
@@ -175,12 +175,12 @@ def parse_gga_sentence(sentence):
         utc_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         seoul_time = utc_time.astimezone(seoul_timezone)
 
+        print(f"UTC Seoul Time: {seoul_time}")
         print(f"Latitude: {latitude} {latitude_direction}")
         print(f"Longitude: {longitude} {longitude_direction}")
         print(f"Altitude: {altitude}")
-        print(f"UTC Seoul Time: {seoul_time}")
 
-        return [latitude], [longitude], [altitude], [seoul_time]
+        return [seoul_time], [latitude], [longitude], [altitude]
 
     else:
         print("Invalid GPGGA sentence format")
@@ -194,7 +194,6 @@ def main():
     rospy.spin()
 
     
-
 
 if __name__ == "__main__":
     main()
