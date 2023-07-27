@@ -75,7 +75,7 @@ class GPSPlotter:
         longitude = msg.longitude
         altitude = msg.altitude
 
-       if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
+        if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
             rospy.loginfo(f"Latitude: {latitude}, Longitude: {longitude}, Altitude: {altitude}")
             self.publish_gps_data(latitude, longitude, altitude)
         else:
