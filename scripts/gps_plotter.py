@@ -76,10 +76,21 @@ class GPSPlotter:
         altitude = msg.altitude
 
         if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
-            rospy.loginfo(f"Latitude: {latitude}, Longitude: {longitude}, Altitude: {altitude}")
+            utc_time = self.get_utc_seoul_time()
+            rospy.loginfo(f"[INFO]\nUTC TIME : {utc_time}\nLATITUDE : {latitude:.6f} degrees\nLONGITUDE : {longitude:.6f} degrees\nALTITUDE : {altitude:.3f} km")
             self.publish_gps_data(latitude, longitude, altitude)
         else:
             rospy.logwarn("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
+
+    def get_utc_seoul_time(self):
+        # 시스템 시간을 UTC로 얻어옴
+        utc_time = datetime.utcnow()
+
+        # UTC 시간을 서울 시간으로 변환
+        seoul_timezone = timezone(timedelta(hours=9))  # UTC +09:00
+        seoul_time = utc_time.astimezone(seoul_timezone)
+
+        return seoul_time
 
     def publish_gps_data(self, latitude, longitude, altitude):
         if not self.publisher:
