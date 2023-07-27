@@ -15,9 +15,15 @@ import webbrowser
 from sensor_msgs.msg import NavSatFix
 
 import rospy
-import re # regex
+import re # 정규표현식 사용
 from datetime import datetime, timezone, timedelta
 
+"""
+GPGGA 형식 오류 MSG : Invalid GPGGA sentence format
+신호 오류 / NAN 오류 : Invalid NMEA data: Latitude, Longitude, or Altitude is not available.
+
+
+"""
 
 def format_altitude(altitude):
     return altitude / 1000
@@ -25,8 +31,8 @@ def format_altitude(altitude):
 def format_coordinate(coord):
     return coord / 1e7
 
+# 선형 보간 함수
 def linear_interpolation(x, y, t):
-    # 선형 보간 함수
     x = np.asarray(x)
     y = np.asarray(y)
     t = np.asarray(t)
@@ -34,6 +40,9 @@ def linear_interpolation(x, y, t):
     x_indices = np.floor(t).astype(int)
     x_indices = np.clip(x_indices, 0, len(x) - 2)
     x_deltas = t - x_indices
+
+    # 보간 결과를 반환 (lat, lon은 이미 보간이 되어 있기 때문에 보간 결과에 대해서는 추가로 처리할 필요 없음)
+    return y[x_indices] + x_deltas * (y[x_indices + 1] - y[x_indices])
 
 def plot_2D_graph(ax, latitude, longitude):
     # 2D 그래프를 그리는 함수 구현
@@ -147,19 +156,30 @@ def on_nmea_data1(msg, callback_args):
         
         # 3D 그래프 그리기
         ax[1].clear()  # 3D 그래프 업데이트를 위해 기존 그래프 삭제
-        plot_3D_graph(ax[1], [latitude], [longitude], [altitude])
+        # plot_3D_graph(ax[1], [latitude], [longitude], [altitude]) # 오류 확인용 제거
 
         # 그래프 출력
         fig.canvas.draw_idle()
         plt.pause(0.001)  # 그래프를 업데이트하기 위해 잠시 일시 정지
+
+        # GPS 데이터를 PC로 전송
+        publish_gps_data(latitude, longitude, altitude)
     else:
         print("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
 
+def publish_gps_data(latitude, longitude, altitude):
+    # 새로운 메시지 생성
+    msg = NavSatFix()
+    msg.header.stamp = rospy.Time.now()
+    msg.latitude = latitude
+    msg.longitude = longitude
+    msg.altitude = altitude
 
-    
+    # 토픽에 메시지 발행
+    publisher.publish(msg)
+
+# 파싱    
 def parse_gga_sentence(sentence):
-    # NMEA 문장을 파싱하여 위도, 경도, 고도 값을 추출하는 함수를 구현합니다.
-    # 이 부분은 주어진 예시의 parse_gga_sentence 함수를 활용하겠습니다.
     pattern = r'\$GPGGA,\d+\.\d+,\d+\.\d+,[NS],\d+\.\d+,[EW],\d,\d+,\d+\.\d+,\d+\.\d+,M,\d+\.\d+,M,(\d+)'
     match = re.match(pattern, sentence)
 
@@ -193,6 +213,10 @@ def main():
     
     rospy.init_node('gps_plotter_node')
     fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+
+    # GPS 데이터를 발행할 토픽 생성
+    publisher = rospy.Publisher('/gps_plotter', NavSatFix, queue_size=10)
+
     rospy.Subscriber('/fix', NavSatFix, on_nmea_data1, callback_args=(fig, ax))
     rospy.spin()
 
@@ -200,3 +224,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
