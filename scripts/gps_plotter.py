@@ -90,11 +90,12 @@ class GPSPlotter:
         self.publisher.publish(data_str)        
 
     def process_raw_data(self, raw_data):
-        lines = raw_data.split('\n')
-        for line in lines:
-            line = line.strip()  # \r 제거
-            if line.startswith('$GNGGA'):
-                self.parse_gga_sentence(line)
+        sentences = raw_data.split('$')
+        for sentence in sentences:
+            sentence = sentence.strip()  # \r 제거
+            if sentence.startswith('GNGGA'):
+                self.parse_gga_sentence('$' + sentence)
+
 
 
     def on_nmea_data(self, msg):
@@ -103,7 +104,7 @@ class GPSPlotter:
 
     def parse_gga_sentence(self, sentence):
         # pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
-        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+,\d+,(\d+),M'
+        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+,\d+,(\d+\.\d+),M'
         match = re.match(pattern, sentence)
 
         if match:
@@ -155,7 +156,7 @@ class GPSPlotter:
             return
 
         if self.ser.is_open:
-            rospy.loginfo("Serial Port initialized")
+            rospy.loginfo("Serial Port initialized\n")
         else:
             rospy.logerr("Failed to open port")
             return
@@ -173,6 +174,5 @@ class GPSPlotter:
 if __name__ == "__main__":
     rospy.init_node('gps_plotter_node')
     gps_plotter = GPSPlotter()
-    rospy.Subscriber("gps_read", String, gps_plotter.publish_gps_data)
     rospy.Subscriber("gps_data", String, gps_plotter.on_nmea_data)
     gps_plotter.main()
