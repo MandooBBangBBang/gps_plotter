@@ -92,16 +92,17 @@ class GPSPlotter:
     def process_raw_data(self, raw_data):
         lines = raw_data.split('\n')
         for line in lines:
-            if line.startswith('$GPGGA'):
+            line = line.strip()  # \r 제거
+            if line.startswith('$GNGGA'):
                 self.parse_gga_sentence(line)
-                return line
+
 
     def on_nmea_data(self, msg):
         sentence = msg.data
         self.parse_gga_sentence(sentence)
 
     def parse_gga_sentence(self, sentence):
-        pattern = r'\$GPGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
+        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
         match = re.match(pattern, sentence)
 
         if match:
@@ -117,34 +118,17 @@ class GPSPlotter:
             utc_minute = int((utc_time % 10000) / 100)
             utc_second = int(utc_time % 100)
 
-            
-
-            # 좌표를 도, 분, 초로 변환
-            latitude_degree = int(latitude)
-            latitude_minute = int((latitude - latitude_degree) * 60)
-            latitude_second = (latitude - latitude_degree - latitude_minute / 60) * 3600
-
-            longitude_degree = int(longitude)
-            longitude_minute = int((longitude - longitude_degree) * 60)
-            longitude_second = (longitude - longitude_degree - longitude_minute / 60) * 3600
-
             # 도, 분, 초로 변환된 값 출력
-            # print(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
-            # print(f"Latitude: {latitude_degree}° {latitude_minute}' {latitude_second:.5f}\" {latitude_direction}")
-            # print(f"Longitude: {longitude_degree}° {longitude_minute}' {longitude_second:.5f}\" {longitude_direction}")
-            # print(f"Altitude: {altitude} meters")
+            rospy.loginfo(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
+            rospy.loginfo(f"Latitude: {latitude:.6f} {latitude_direction}")
+            rospy.loginfo(f"Longitude: {longitude:.6f} {longitude_direction}")
+            rospy.loginfo(f"Altitude: {altitude:.3f} meters")
 
+            # GPS 데이터 발행
             self.publish_gps_data(f"{utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}", latitude, longitude, altitude)
-            return utc_time, latitude, longitude, altitude
 
         else:
-            print("Invalid GPGGA sentence format")
-            return [], [], [], []
-
-    def on_serial_data(self, data):
-        # raw 데이터가 시리얼 통신을 통해 도착할 때 호출되는 콜백 함수
-        # raw 데이터를 처리
-        self.process_raw_data(data)
+            rospy.logwarn("Invalid GNGGA sentence format")
 
     def receive_serial_data(self, data):
         data = data.data
