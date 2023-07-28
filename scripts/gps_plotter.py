@@ -70,18 +70,6 @@ class GPSPlotter:
                         transform=self.ax[1].transAxes, fontsize=8, verticalalignment='top', horizontalalignment='left', bbox=dict(facecolor='white', alpha=0.8))
         plt.show()
 
-    def on_nmea_data(self, msg):
-        latitude = msg.latitude
-        longitude = msg.longitude
-        altitude = msg.altitude
-
-        if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
-            utc_time = self.get_utc_seoul_time()
-            rospy.loginfo(f"\n\nUTC TIME : {utc_time}\nLATITUDE : {latitude:.6f} degrees\nLONGITUDE : {longitude:.6f} degrees\nALTITUDE : {altitude:.3f} km")
-            self.publish_gps_data(latitude, longitude, altitude)
-        else:
-            rospy.logwarn("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
-
     def get_utc_seoul_time(self):
         # 시스템 시간을 UTC로 얻어옴
         utc_time = datetime.utcnow()
@@ -92,17 +80,25 @@ class GPSPlotter:
 
         return seoul_time
 
-    def publish_gps_data(self, data):
+    def publish_gps_data(self, utc_time, latitude, longitude, altitude):
         if not self.publisher:
-            self.publisher = rospy.Publisher('/gps_plotter', String, queue_size=10)
+            self.publisher = rospy.Publisher('/gps_data', String, queue_size=10)
 
-        self.publisher.publish(data)
+        # 데이터를 원하는 형식으로 가공하여 문자열로 만듭니다.
+        data_str = f"\nUTC Time : {utc_time}\nLatitude : {latitude:.6f} degrees\nLongitude : {longitude:.6f} degrees\nAltitude : {altitude:.3f} km\n---"
+
+        self.publisher.publish(data_str)        
+
     
     def process_raw_data(self, raw_data):
         lines = raw_data.split('\n')
         for line in lines:
             if line.startswith('$GNGGA'):
                 self.parse_gga_sentence(line)
+
+    def on_nmea_data(self, msg):
+        sentence = msg.data
+        self.parse_gga_sentence(sentence)
 
     def parse_gga_sentence(self, sentence):
         pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
@@ -131,12 +127,12 @@ class GPSPlotter:
             longitude_second = (longitude - longitude_degree - longitude_minute / 60) * 3600
 
             # 도, 분, 초로 변환된 값 출력
-            print(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
-            print(f"Latitude: {latitude_degree}° {latitude_minute}' {latitude_second:.5f}\" {latitude_direction}")
-            print(f"Longitude: {longitude_degree}° {longitude_minute}' {longitude_second:.5f}\" {longitude_direction}")
-            print(f"Altitude: {altitude} meters")
+            # print(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
+            # print(f"Latitude: {latitude_degree}° {latitude_minute}' {latitude_second:.5f}\" {latitude_direction}")
+            # print(f"Longitude: {longitude_degree}° {longitude_minute}' {longitude_second:.5f}\" {longitude_direction}")
+            # print(f"Altitude: {altitude} meters")
 
-            return [utc_hour], [latitude], [longitude], [altitude]
+            self.publish_gps_data(f"{utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}", latitude, longitude, altitude)
 
         else:
             print("Invalid GNGGA sentence format")
