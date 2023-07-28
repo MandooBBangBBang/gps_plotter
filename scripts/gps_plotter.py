@@ -6,23 +6,23 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import ScalarFormatter
 import numpy as np
 from scipy.interpolate import interp1d
-import folium
-import mplleaflet
-import webbrowser
-from sensor_msgs.msg import NavSatFix
-import rospy
 import re
 from datetime import datetime, timezone, timedelta
+import rospy
+import serial
+from std_msgs.msg import String
+
 
 class GPSPlotter:
     def __init__(self):
         self.publisher = None
         self.fig, self.ax = plt.subplots(2, 1, figsize=(10, 10))
+        self.ser = serial.Serial()
 
     def format_altitude(self, altitude):
         return altitude / 1000
 
-    def format_coordinate(self, coord):
+    def format_coordinate(self, coord): 
         return coord / 1e7
 
     def linear_interpolation(self, x, y, t):
@@ -77,7 +77,7 @@ class GPSPlotter:
 
         if not np.isnan(latitude) and not np.isnan(longitude) and not np.isnan(altitude):
             utc_time = self.get_utc_seoul_time()
-            rospy.loginfo(f"[INFO]\nUTC TIME : {utc_time}\nLATITUDE : {latitude:.6f} degrees\nLONGITUDE : {longitude:.6f} degrees\nALTITUDE : {altitude:.3f} km")
+            rospy.loginfo(f"\n\nUTC TIME : {utc_time}\nLATITUDE : {latitude:.6f} degrees\nLONGITUDE : {longitude:.6f} degrees\nALTITUDE : {altitude:.3f} km")
             self.publish_gps_data(latitude, longitude, altitude)
         else:
             rospy.logwarn("Invalid NMEA data: Latitude, Longitude, or Altitude is not available.")
@@ -92,48 +92,98 @@ class GPSPlotter:
 
         return seoul_time
 
-    def publish_gps_data(self, latitude, longitude, altitude):
+    def publish_gps_data(self, data):
         if not self.publisher:
-            self.publisher = rospy.Publisher('/gps_plotter', NavSatFix, queue_size=10)
+            self.publisher = rospy.Publisher('/gps_plotter', String, queue_size=10)
 
-        msg = NavSatFix()
-        msg.latitude = latitude
-        msg.longitude = longitude
-        msg.altitude = altitude
-
-        self.publisher.publish(msg)
+        self.publisher.publish(data)
+    
+    def process_raw_data(self, raw_data):
+        lines = raw_data.split('\n')
+        for line in lines:
+            if line.startswith('$GNGGA'):
+                self.parse_gga_sentence(line)
 
     def parse_gga_sentence(self, sentence):
-        pattern = r'\$GPGGA,\d+\.\d+,\d+\.\d+,[NS],\d+\.\d+,[EW],\d,\d+,\d+\.\d+,\d+\.\d+,M,\d+\.\d+,M,(\d+)'
+        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
         match = re.match(pattern, sentence)
 
         if match:
+            utc_time = float(match.group(1))
             latitude = float(match.group(2))
             latitude_direction = match.group(3)
             longitude = float(match.group(4))
             longitude_direction = match.group(5)
             altitude = float(match.group(9))
-            timestamp = int(float(match.group(1)))
-            seoul_timezone = timezone(timedelta(hours=9))
-            utc_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            seoul_time = utc_time.astimezone(seoul_timezone)
 
-            print(f"UTC Seoul Time: {seoul_time}")
-            print(f"Latitude: {latitude} {latitude_direction}")
-            print(f"Longitude: {longitude} {longitude_direction}")
-            print(f"Altitude: {altitude}")
+            # UTC 시간을 시, 분, 초로 변환
+            utc_hour = int(utc_time / 10000)
+            utc_minute = int((utc_time % 10000) / 100)
+            utc_second = int(utc_time % 100)
 
-            return [seoul_time], [latitude], [longitude], [altitude]
+            # 좌표를 도, 분, 초로 변환
+            latitude_degree = int(latitude)
+            latitude_minute = int((latitude - latitude_degree) * 60)
+            latitude_second = (latitude - latitude_degree - latitude_minute / 60) * 3600
+
+            longitude_degree = int(longitude)
+            longitude_minute = int((longitude - longitude_degree) * 60)
+            longitude_second = (longitude - longitude_degree - longitude_minute / 60) * 3600
+
+            # 도, 분, 초로 변환된 값 출력
+            print(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
+            print(f"Latitude: {latitude_degree}° {latitude_minute}' {latitude_second:.5f}\" {latitude_direction}")
+            print(f"Longitude: {longitude_degree}° {longitude_minute}' {longitude_second:.5f}\" {longitude_direction}")
+            print(f"Altitude: {altitude} meters")
+
+            return [utc_hour], [latitude], [longitude], [altitude]
 
         else:
-            print("Invalid GPGGA sentence format")
+            print("Invalid GNGGA sentence format")
             return [], [], [], []
+
+    def on_serial_data(self, data):
+        # raw 데이터가 시리얼 통신을 통해 도착할 때 호출되는 콜백 함수
+        # raw 데이터를 처리
+        self.process_raw_data(data)
+
+    def receive_serial_data(self, data):
+        data = data.data
+        rospy.loginfo(f"Writing to serial port: {data}")
+        self.ser.write(data.encode())
 
     def main(self):
         rospy.init_node('gps_plotter_node')
+        rospy.Subscriber("write", String, self.receive_serial_data)
+        read_pub = rospy.Publisher("read", String, queue_size=1000)
 
-        rospy.Subscriber('/fix', NavSatFix, self.on_nmea_data)
-        rospy.spin()
+        try:
+            ###########################
+            # 여기 포트를 수정하세요! #
+            ###########################
+            self.ser.port = "/dev/ttyUSB0"
+            self.ser.baudrate = 9600
+            self.ser.timeout = 1
+            self.ser.open()
+        except serial.SerialException:
+            rospy.logerr("Unable to open port")
+            return
+
+        if self.ser.is_open:
+            rospy.loginfo("Serial Port initialized")
+        else:
+            rospy.logerr("Failed to open port")
+            return
+
+        rate = rospy.Rate(5)
+
+        while not rospy.is_shutdown():
+            data = self.ser.read_all().decode()
+            if data:
+                rospy.loginfo(f"Reading from serial port: {data}")
+                read_pub.publish(data)
+            rate.sleep()
+        
 
 if __name__ == "__main__":
     rospy.init_node('gps_plotter_node')
