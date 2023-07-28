@@ -89,19 +89,19 @@ class GPSPlotter:
 
         self.publisher.publish(data_str)        
 
-    
     def process_raw_data(self, raw_data):
         lines = raw_data.split('\n')
         for line in lines:
-            if line.startswith('$GNGGA'):
+            if line.startswith('$GPGGA'):
                 self.parse_gga_sentence(line)
+                return line
 
     def on_nmea_data(self, msg):
         sentence = msg.data
         self.parse_gga_sentence(sentence)
 
     def parse_gga_sentence(self, sentence):
-        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
+        pattern = r'\$GPGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
         match = re.match(pattern, sentence)
 
         if match:
@@ -116,6 +116,8 @@ class GPSPlotter:
             utc_hour = int(utc_time / 10000)
             utc_minute = int((utc_time % 10000) / 100)
             utc_second = int(utc_time % 100)
+
+            
 
             # 좌표를 도, 분, 초로 변환
             latitude_degree = int(latitude)
@@ -136,7 +138,7 @@ class GPSPlotter:
             return utc_time, latitude, longitude, altitude
 
         else:
-            print("Invalid GNGGA sentence format")
+            print("Invalid GPGGA sentence format")
             return [], [], [], []
 
     def on_serial_data(self, data):
