@@ -133,6 +133,7 @@ class GPSPlotter:
             # print(f"Altitude: {altitude} meters")
 
             self.publish_gps_data(f"{utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}", latitude, longitude, altitude)
+            return utc_time, latitude, longitude, altitude
 
         else:
             print("Invalid GNGGA sentence format")
@@ -150,8 +151,8 @@ class GPSPlotter:
 
     def main(self):
         rospy.init_node('gps_plotter_node')
-        rospy.Subscriber("write", String, self.receive_serial_data)
-        read_pub = rospy.Publisher("read", String, queue_size=1000)
+        rospy.Subscriber("gps_write", String, self.receive_serial_data)
+        read_pub = rospy.Publisher("gps_read", String, queue_size=1000)
 
         try:
             ###########################
@@ -162,7 +163,7 @@ class GPSPlotter:
             self.ser.timeout = 1
             self.ser.open()
         except serial.SerialException:
-            rospy.logerr("Unable to open port")
+            rospy.logerr("Unable to open port. plz do chmod")
             return
 
         if self.ser.is_open:
