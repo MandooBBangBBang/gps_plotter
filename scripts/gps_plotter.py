@@ -102,7 +102,8 @@ class GPSPlotter:
         self.parse_gga_sentence(sentence)
 
     def parse_gga_sentence(self, sentence):
-        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
+        # pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
+        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+,\d+,(\d+),M'
         match = re.match(pattern, sentence)
 
         if match:
@@ -171,4 +172,5 @@ class GPSPlotter:
 if __name__ == "__main__":
     rospy.init_node('gps_plotter_node')
     gps_plotter = GPSPlotter()
+    rospy.Subscriber("gps_data", String, gps_plotter.publish_gps_data)
     gps_plotter.main()
