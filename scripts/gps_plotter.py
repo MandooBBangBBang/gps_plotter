@@ -82,9 +82,9 @@ class GPSPlotter:
 
     def publish_gps_data(self, utc_time, latitude, longitude, altitude):
         if not self.publisher:
-            self.publisher = rospy.Publisher('/gps_data', String, queue_size=10)
+            self.publisher = rospy.Publisher('gps_data', String, queue_size=10)
 
-        # 데이터를 원하는 형식으로 가공하여 문자열로 만듭니다.
+        # 데이터를 원하는 형식으로 가공하여 문자열로 만듦
         data_str = f"\nUTC Time : {utc_time}\nLatitude : {latitude:.6f} degrees\nLongitude : {longitude:.6f} degrees\nAltitude : {altitude:.3f} km\n---"
 
         self.publisher.publish(data_str)        
