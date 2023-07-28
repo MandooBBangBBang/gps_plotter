@@ -103,8 +103,8 @@ class GPSPlotter:
         self.parse_gga_sentence(sentence)
 
     def parse_gga_sentence(self, sentence):
-        # pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+\.\d+,\d+\.\d+,M'
-        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d+,\d+,\d+,\d+,(\d+\.\d+),M'
+        # pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),\d,\d+,\d+\.\d+,\d+\.\d+,[A-Z]'
+        pattern = r'\$GNGGA,(\d+\.\d+),(\d+\.\d+),([NS]),(\d+\.\d+),([EW]),(\d),(\d+),(\d+\.\d+),(\d+\.\d+),M'
         match = re.match(pattern, sentence)
 
         if match:
@@ -113,7 +113,41 @@ class GPSPlotter:
             latitude_direction = match.group(3)
             longitude = float(match.group(4))
             longitude_direction = match.group(5)
+            fix_quality = int(match.group(6))
+            satellites = int(match.group(7))
+            horizontal_dilution = float(match.group(8))
             altitude = float(match.group(9))
+
+            # UTC 시간을 시, 분, 초로 변환
+            utc_hour = int(utc_time / 10000)
+            utc_minute = int((utc_time % 10000) / 100)
+            utc_second = int(utc_time % 100)
+
+            # 도, 분, 초로 변환된 값 출력
+            rospy.loginfo(f"UTC Time: {utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}")
+            rospy.loginfo(f"Latitude: {latitude:.6f} {latitude_direction}")
+            rospy.loginfo(f"Longitude: {longitude:.6f} {longitude_direction}")
+            rospy.loginfo(f"Fix Quality: {fix_quality}")
+            rospy.loginfo(f"Satellites: {satellites}")
+            rospy.loginfo(f"Horizontal Dilution: {horizontal_dilution:.2f}")
+            rospy.loginfo(f"Altitude: {altitude:.3f} meters")
+
+            # GPS 데이터 발행
+            self.publish_gps_data(f"{utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}", latitude, longitude, altitude)
+
+        else:
+            rospy.logwarn("Invalid GNGGA sentence format")
+
+    # 콤마로 파싱 수행 -> on_nema 함수와 parse_gga_sentence 함수 수정 필요
+    def parse_gga_sentence_coma(self, sentence):
+        fields = sentence.split(',')
+        if len(fields) >= 15 and fields[0] == '$GNGGA':
+            utc_time = float(fields[1])
+            latitude = float(fields[2])
+            latitude_direction = fields[3]
+            longitude = float(fields[4])
+            longitude_direction = fields[5]
+            altitude = float(fields[9])
 
             # UTC 시간을 시, 분, 초로 변환
             utc_hour = int(utc_time / 10000)
@@ -128,9 +162,9 @@ class GPSPlotter:
 
             # GPS 데이터 발행
             self.publish_gps_data(f"{utc_hour:02d}:{utc_minute:02d}:{utc_second:02d}", latitude, longitude, altitude)
-
         else:
             rospy.logwarn("Invalid GNGGA sentence format")
+
 
     def receive_serial_data(self, data):
         data = data.data
