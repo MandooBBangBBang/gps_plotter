@@ -136,10 +136,11 @@ class GPSPlotter:
         rospy.loginfo(f"Writing to serial port: {data}")
         self.ser.write(data.encode())
 
+
     def main(self):
         rospy.init_node('gps_plotter_node')
         rospy.Subscriber("gps_write", String, self.receive_serial_data)
-        read_pub = rospy.Publisher("gps_read", String, queue_size=1000)
+        read_pub = rospy.Publisher("gps_data", String, queue_size=1000)
 
         try:
             ###########################
@@ -172,5 +173,6 @@ class GPSPlotter:
 if __name__ == "__main__":
     rospy.init_node('gps_plotter_node')
     gps_plotter = GPSPlotter()
-    rospy.Subscriber("gps_data", String, gps_plotter.publish_gps_data)
+    rospy.Subscriber("gps_read", String, gps_plotter.publish_gps_data)
+    rospy.Subscriber("gps_data", String, gps_plotter.on_nmea_data)
     gps_plotter.main()
