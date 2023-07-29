@@ -119,6 +119,7 @@ class GPSparser:
 
         fields = [field for field in self.field_delimiter_regex.split(nmea_sentence)]
 
+        # $ 뒤의 두글자 무시 ex. $GN , $GP
         sentence_type = fields[0][3:]
 
         if sentence_type == 'GGA':
@@ -128,31 +129,6 @@ class GPSparser:
         else:
             self.logger.debug("Sentence type %s not in parse map, ignoring." % repr(sentence_type))
             return False
-        
-    def get_utc_seoul_time(self):
-        # 시스템 시간을 UTC로 얻어옴
-        utc_time = datetime.utcnow()
-
-        # UTC 시간을 서울 시간으로 변환
-        seoul_timezone = self.timezone(self.timedelta(hours=9))  # UTC +09:00
-        seoul_time = utc_time.astimezone(seoul_timezone)
-
-        return seoul_time
-
-    parse_maps = {
-        "GGA": [
-            ("fix_type", int, 6),
-            ("latitude", convert_latitude, 2),
-            ("latitude_direction", str, 3),
-            ("longitude", convert_longitude, 4),
-            ("longitude_direction", str, 5),
-            ("altitude", safe_float, 9),
-            ("mean_sea_level", safe_float, 11),
-            ("hdop", safe_float, 8),
-            ("num_satellites", safe_int, 7),
-            ("utc_time", convert_time, 1),
-        ]
-    }
 
     def check_nmea_checksum(self, nmea_sentence):
         split_sentence = nmea_sentence.split('*')
@@ -282,6 +258,15 @@ class ROSdriver:
             return "%s/%s" % (prefix, frame_id)
         else:
             return frame_id
+        
+    def receive_serial_data(self, msg):
+        data = self.ser.read_all().decode()
+        if data:
+            rospy.loginfo(f"Reading from serial port: {data}")
+            frame_id = "gps_frame"
+            timestamp = rospy.Time.now()
+            self.add_sentence(data, frame_id, timestamp)
+        
 
     def on_nmea_data(self, msg):
         sentence = msg.data
@@ -344,8 +329,7 @@ class ROSdriver:
 class GPSPlotter:    
     def __init__(self):
         rospy.init_node('gps_plotter')
-        rospy.Subscriber("gps_write", NavSatFix, self.receive_serial_data)
-        read_pub = rospy.Publisher("gps_data", NavSatFix, queue_size=1000)
+        rospy.Subscriber("gps_write", NavSatFix, ROSdriver.receive_serial_data)
         
         try:
             ###########################
@@ -363,12 +347,6 @@ class GPSPlotter:
             return
 
         self.rate = rospy.Rate(5)
-
-    def receive_serial_data(self, msg):
-        data = self.ser.read_all().decode()
-        if data:
-            rospy.loginfo(f"Reading from serial port: {data}")
-            self.read_pub.publish(data)
 
     def linear_interpolation(self, x, y, t):
         x = np.asarray(x)
