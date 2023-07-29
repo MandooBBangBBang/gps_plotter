@@ -15,7 +15,7 @@ from scipy.interpolate import interp1d
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import ScalarFormatter
 
-from std_msgs.msg import GPSdata, GPSstatus, GPStime
+from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import TwistStamped, QuaternionStamped
 from tf.transformations import quaternion_from_euler
 
@@ -170,19 +170,21 @@ class GPSparser:
 # GPS 데이터를 ROS메시지로 변환 및 퍼블리싱
 class ROSdriver:
     def __init__(self):
-        self.fix_pub = rospy.Publisher('GPSdata', GPSdata, queue_size=1)
+        self.fix_pub = rospy.Publisher('GPSdata', NavSatFix, queue_size=1)
         self.vel_pub = rospy.Publisher('velocity', TwistStamped, queue_size=1)
         self.heading_pub = rospy.Publisher('heading', QuaternionStamped, queue_size=1)
-        self.time_ref_pub = rospy.Publisher('time_reference', GPStime, queue_size=1)
+        self.time_ref_pub = rospy.Publisher('time_reference', TimeReference, queue_size=1)
 
         self.time_ref_source = rospy.get_param('~time_ref_source', None)
+        
+        self.parser = GPSparser()
 
     def add_sentence(self, nmea_string, frame_id, timestamp=None):
-        if not GPSPlotter.check_nmea_checksum(nmea_string):
+        if not GPSparser.check_nmea_checksum(nmea_string):
             rospy.logwarn("Received a sentence with an invalid checksum. Sentence was: %s" % repr(nmea_string))
             return False
 
-        parsed_sentence = GPSPlotter.parse_nmea_sentence(nmea_string)
+        parsed_sentence = GPSparser.parse_nmea_sentence(nmea_string)
 
         if not parsed_sentence:
             rospy.logdebug("Failed to parse NMEA sentence. Sentence was: %s" % nmea_string)
@@ -193,11 +195,11 @@ class ROSdriver:
         else:
             current_time = rospy.get_rostime()
 
-        current_fix = GPSdata()
+        current_fix = NavSatFix()
         current_fix.header.stamp = current_time
         current_fix.header.frame_id = frame_id
 
-        current_time_ref = GPStime()
+        current_time_ref = TimeReference()
         current_time_ref.header.stamp = current_time
         current_time_ref.header.frame_id = frame_id
         if self.time_ref_source:
@@ -211,10 +213,10 @@ class ROSdriver:
             data = parsed_sentence['GGA']
 
             fix_type = data['fix_type']
-            current_fix.status.status = GPSstatus.STATUS_FIX
-            current_fix.position_covariance_type = GPSdata.COVARIANCE_TYPE_APPROXIMATED
+            current_fix.status.status = NavSatStatus.STATUS_FIX
+            current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
 
-            current_fix.status.service = GPSstatus.SERVICE_GPS
+            current_fix.status.service = NavSatStatus.SERVICE_GPS
 
             latitude = data['latitude']
             if data['latitude_direction'] == 'S':
@@ -244,9 +246,9 @@ class ROSdriver:
         elif sentence_type == 'RMC':
             data = parsed_sentence['RMC']
 
-            current_fix.status.status = GPSstatus.STATUS_FIX
+            current_fix.status.status = NavSatStatus.STATUS_FIX
 
-            current_fix.status.service = GPSstatus.SERVICE_GPS
+            current_fix.status.service = NavSatStatus.SERVICE_GPS
 
             latitude = data['latitude']
             if data['latitude_direction'] == 'S':
@@ -259,7 +261,7 @@ class ROSdriver:
             current_fix.longitude = longitude
 
             current_fix.altitude = float('NaN')
-            current_fix.position_covariance_type = GPSdata.COVARIANCE_TYPE_UNKNOWN
+            current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
 
             self.fix_pub.publish(current_fix)
 
@@ -342,8 +344,31 @@ class ROSdriver:
 class GPSPlotter:    
     def __init__(self):
         rospy.init_node('gps_plotter')
-        rospy.Subscriber("gps_write", GPSdata, self.receive_serial_data)
-        read_pub = rospy.Publisher("gps_data", GPSdata, queue_size=1000)
+        rospy.Subscriber("gps_write", NavSatFix, self.receive_serial_data)
+        read_pub = rospy.Publisher("gps_data", NavSatFix, queue_size=1000)
+        
+        try:
+            ###########################
+            # 여기 포트를 수정하세요! #
+            ###########################
+            self.ser = serial.Serial(port="/dev/ttyUSB0", baudrate=9600, timeout=1)
+        except serial.SerialException:
+            rospy.logerr("Unable to open port. Please make sure the port is accessible.")
+            return
+
+        if self.ser.is_open:
+            rospy.loginfo("Serial Port initialized\n")
+        else:
+            rospy.logerr("Failed to open port")
+            return
+
+        self.rate = rospy.Rate(5)
+
+    def receive_serial_data(self, msg):
+        data = self.ser.read_all().decode()
+        if data:
+            rospy.loginfo(f"Reading from serial port: {data}")
+            self.read_pub.publish(data)
 
     def linear_interpolation(self, x, y, t):
         x = np.asarray(x)
@@ -390,38 +415,13 @@ class GPSPlotter:
                         transform=self.ax[1].transAxes, fontsize=8, verticalalignment='top', horizontalalignment='left', bbox=dict(facecolor='white', alpha=0.8))
         plt.show()
 
-    def main(self):
-        rospy.init_node('gps_plotter_node')
-        rospy.Subscriber("gps_write", GPSdata, self.receive_serial_data)
-        read_pub = rospy.Publisher("gps_data", GPSdata, queue_size=1000)
-
-        try:
-            ###########################
-            # 여기 포트를 수정하세요! #
-            ###########################
-            self.ser.port = "/dev/ttyUSB0"
-            self.ser.baudrate = 9600
-            self.ser.timeout = 1
-            self.ser.open()
-        except serial.SerialException:
-            rospy.logerr("Unable to open port. plz do chmod")
-            return
-
-        if self.ser.is_open:
-            rospy.loginfo("Serial Port initialized\n")
-        else:
-            rospy.logerr("Failed to open port")
-            return
-
-        rate = rospy.Rate(5)
-
-        while not rospy.is_shutdown():
-            data = self.ser.read_all().decode()
-            if data:
-                rospy.loginfo(f"Reading from serial port: {data}")
-                read_pub.publish(data)
-            rate.sleep()
+# 모든 클래스를 인스턴스화
+class MainNode:
+    def __init__(self):
+        self.gps_plotter = ROSdriver()
+        rospy.Subscriber("gps_write", NavSatFix, self.gps_plotter.on_nmea_data)
 
 if __name__ == "__main__":
-    GPSPlotter.main()
-    
+    rospy.init_node('main_node')
+    main_node = MainNode()
+    rospy.spin()
